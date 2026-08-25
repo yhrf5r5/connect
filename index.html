@@ -340,8 +340,10 @@ async function refreshMessages(isFirstLoad) {
         nick: m.nick,
         time: m.time,
         text: m.text,
-        file: m.fileName ? { name: m.fileName, url: m.fileUrl } : null,
-        audioUrl: m.isAudio === 'yes' ? m.fileUrl : null,
+        fileId: m.fileId,
+        fileUrl: m.fileUrl,
+        fileName: m.fileName,
+        isAudio: m.isAudio === 'yes',
         duration: m.duration
       });
     });
@@ -367,53 +369,50 @@ function randomWaveBars(n) {
   return out;
 }
 
+const IMAGE_EXT = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'heic'];
+
+function getExt(name) {
+  if (!name) return '';
+  const parts = name.split('.');
+  return parts.length > 1 ? parts.pop().toLowerCase() : '';
+}
+
 function renderMessage(m) {
   const thread = document.getElementById('thread');
   const row = document.createElement('div');
   row.className = 'row from-' + m.from;
 
-  let fileHtml = '';
-  if (m.file) {
-    fileHtml = `<a href="${m.file.url}" target="_blank" style="text-decoration:none;color:inherit"><div class="file-chip"><span class="ic">📦</span><span class="fname">${escapeHtml(m.file.name)}</span></div></a>`;
-  }
+  let mediaHtml = '';
+  let textHtml = m.text ? `<div class="text">${escapeHtml(m.text)}</div>` : '';
 
-  let voiceHtml = '';
-  let textHtml = `<div class="text">${escapeHtml(m.text)}</div>`;
-  if (m.audioUrl) {
-    textHtml = '';
-    const barsId = 'wave_' + Math.random().toString(36).slice(2);
-    voiceHtml = `
-      <div class="voice-msg">
-        <button class="playbtn" onclick="toggleAudio(this)">▶</button>
-        <div class="wave" id="${barsId}">${randomWaveBars(22)}</div>
-        <div class="vtime">${m.duration || '0:00'}</div>
-        <audio src="${m.audioUrl}" preload="metadata"></audio>
+  if (m.isAudio && m.fileId) {
+    // Проигрывание прямо с Google Диска через встроенный плеер —
+    // это единственный надёжный способ стримить, а не скачивать файл.
+    mediaHtml = `
+      <div class="voice-msg" style="min-width:230px">
+        <iframe src="https://drive.google.com/file/d/${m.fileId}/preview"
+          width="230" height="60" style="border:none;border-radius:8px" allow="autoplay"></iframe>
+        <div class="vtime" style="margin-left:6px">${m.duration || ''}</div>
       </div>
     `;
+  } else if (m.fileId && IMAGE_EXT.includes(getExt(m.fileName))) {
+    // Прямая ссылка на превью — открывается инлайн, без скачивания
+    const imgSrc = `https://drive.google.com/thumbnail?id=${m.fileId}&sz=w800`;
+    mediaHtml = `<a href="${m.fileUrl}" target="_blank"><img src="${imgSrc}" style="max-width:100%;border-radius:10px;margin-top:6px;display:block"></a>`;
+  } else if (m.fileName) {
+    mediaHtml = `<a href="${m.fileUrl}" target="_blank" style="text-decoration:none;color:inherit"><div class="file-chip"><span class="ic">📦</span><span class="fname">${escapeHtml(m.fileName)}</span></div></a>`;
   }
 
   row.innerHTML = `
     <div class="bubble">
       <div class="nick">${escapeHtml(m.nick)}</div>
       ${textHtml}
-      ${voiceHtml}
-      ${fileHtml}
+      ${mediaHtml}
       <div class="meta">${m.time}</div>
     </div>
   `;
   thread.appendChild(row);
   thread.scrollTop = thread.scrollHeight;
-}
-
-function toggleAudio(btn) {
-  const audio = btn.parentElement.querySelector('audio');
-  document.querySelectorAll('.voice-msg audio').forEach(a => {
-    if (a !== audio && !a.paused) { a.pause(); a.currentTime = 0; }
-  });
-  document.querySelectorAll('.voice-msg .playbtn').forEach(b => { if (b !== btn) b.textContent = '▶'; });
-  if (audio.paused) { audio.play(); btn.textContent = '⏸'; }
-  else { audio.pause(); btn.textContent = '▶'; }
-  audio.onended = () => btn.textContent = '▶';
 }
 
 function escapeHtml(str) {
